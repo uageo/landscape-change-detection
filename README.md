@@ -27,4 +27,4 @@ Follow the instructions in the documentation to process your own remote sensing 
 Contribution
 Contributions are welcome! Please submit a pull request or open an issue to discuss potential improvements or features.
 License
-This project is licensed under the MIT License - see the LICENSE file for details. This description provides a clear overview of the project, its objectives, features, technologies used, and instructions for getting started while ensuring it is concise and informative.
+This project is licensed under the MIT License - see the [LICENSE  file](https://opensource.org/license/mit)  for details. This description provides a clear overview of the project, its objectives, features, technologies used, and instructions for getting started while ensuring it is concise and informative.
