@@ -1,0 +1,114 @@
+var point = ee.Geometry.Point([37.42771175819914, 48.08515841925123]); // Широта, Довгота
+Map.centerObject(point, 8); // Центруємо карту на точці
+
+// Створюємо полігон з вершин
+var polygon = ee.Geometry.Polygon([
+  [[37.30863146760378, 48.14608010603458], [37.518777369979404, 48.146585188153416], [37.56457298505174, 48.00903305388018], [37.299, 48.015], [37.30863146760378, 48.14608010603458]]
+]);
+
+Map.centerObject(polygon, 8); // Центруємо карту на полігоні
+
+// Завантажуємо колекцію зображень Sentinel-2
+var s2 = ee.ImageCollection("COPERNICUS/S2")
+  .filter(ee.Filter.bounds(polygon)); // Фільтруємо за полігоном
+
+// Визначаємо дати
+var beforeDate = ee.Date('2024-09-14'); 
+// Змінено на правильний формат дати
+var afterDate = ee.Date('2024-09-19');
+
+// Фільтруємо зображення до і після дати
+var before = s2.filter(ee.Filter.date(beforeDate, beforeDate.advance(1, 'day')));
+var beforeComposite = before.median();
+
+var after = s2.filter(ee.Filter.date(afterDate, afterDate.advance(1, 'day')));
+var afterComposite = after.median();
+
+// Візуалізація RGB
+var rgbVis = {min: 0, max: 0.3, bands: ['B4', 'B3', 'B2']};
+
+// Додаємо шари до карти
+Map.addLayer(beforeComposite.clip(polygon), rgbVis, 'Before');
+Map.addLayer(afterComposite.clip(polygon), rgbVis, 'After');
+
+// Функція для додавання індексів
+var addIndices = function(image) {
+  var nbr = image.normalizedDifference(['B8', 'B12']).rename(['nbr']);
+  var ndvi = image.normalizedDifference(['B8', 'B4']).rename(['ndvi']);
+  return image.addBands(nbr).addBands(ndvi);
+}
+
+// Вибір індексу для зміни
+var selectedIndex = 'nbr';
+var beforeNbr = addIndices(beforeComposite).select(selectedIndex);
+var afterNbr = addIndices(afterComposite).select(selectedIndex);
+
+// Зміна індексу
+var difference = beforeNbr.subtract(afterNbr).clip(polygon);
+var indexThreshold = 0.25;
+var change = difference.gt(indexThreshold);
+
+// Маскуємо водойми за допомогою WorldCover
+var classification = ee.ImageCollection("ESA/WorldCover/v100").first();
+var water = classification.eq(80);
+change = change.updateMask(water.not());
+
+// Додаємо виявлені зміни на карту
+Map.addLayer(change.selfMask(), {min: 0, max: 1, palette: ['orange']}, 'Detected Change');
+
+// Визначаємо мінімальну та максимальну площу
+var minArea = 300;
+var maxArea = 50000;
+
+// Розрахунок пікселів
+var minPixels = ee.Number(minArea).divide(100);
+var maxPixels = ee.Number(maxArea).divide(100);
+
+// Підрахунок з'єднаних пікселів
+var connections = change.connectedPixelCount(maxPixels.add(10));
+var masked = change.updateMask(connections.gt(minPixels).and(connections.lte(maxPixels)));
+
+// Перетворення на вектори
+var vectors = masked.selfMask().reduceToVectors({
+  scale: 10,
+  eightConnected: false,
+  maxPixels: 1e10
+});
+
+// Офарблюємо всі краї полігонів
+var colored = ee.Image().byte().paint({
+  featureCollection: vectors,
+  color: 1,
+});
+
+// Додаємо на карту
+Map.addLayer(colored, {max: 1, palette: ['red']}, 'Detected Change (Filtered)');
+
+// Визначаємо центроїди
+var centroids = vectors.map(function(f) {
+  return f.centroid({maxError: 1});
+});
+
+// Додаємо центроїди на карту
+Map.addLayer(centroids, {max: 1, color: 'cyan'}, 'Detected Site Centroids');
+
+// Створюємо віджет UI
+var widget = ui.Label({
+  value: 'CONFLICT MAPPING ON GEE',
+  style: {width: '400px', height: '200px', fontSize: '20px', color: '484848', position: 'middle-left'}
+});
+Map.add(widget);
+
+// Переглядаємо стиль віджета
+print(widget.style());
+
+// Змінюємо стиль віджета
+widget.style().set('backgroundColor', 'lightgray');
+print(widget.style());
+
+// Визначаємо стиль віджета
+var widgetStyle = widget.style();
+widgetStyle.set({border: '5px solid darkgray', textAlign: 'left'});
+print(widgetStyle);
+
+Map.addLayer(polygon, {color: 'blue', opacity: 0.5}, 'Transparent Polygon');
